@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
+import { useAuth } from '../hooks/useAuth';
+import useToast from '../hooks/useToast';
 import { getCourseById } from '../services/courseService';
+import { createEnrollment, getAllEnrollments } from '../services/enrollmentService';
 import LoadingSpinner from '../components/LoadingSpinner';
 import ErrorMessage from '../components/ErrorMessage';
 import Icon from '../components/Icon';
@@ -14,9 +17,12 @@ function getLessonPreview(content) {
 
 export default function CourseDetail() {
   const { id } = useParams();
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [course, setCourse] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [isEnrolled, setIsEnrolled] = useState(false);
 
   useEffect(() => {
     getCourseById(id)
@@ -24,6 +30,27 @@ export default function CourseDetail() {
       .catch(err => setError(err.response?.data?.message || 'Course not found'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!user || user.role !== 'learner') return;
+    getAllEnrollments()
+      .then((res) => {
+        const mine = (res.data.data || []).filter((item) => item.user_id === user.id);
+        setIsEnrolled(mine.some((item) => item.course_id === Number(id)));
+      })
+      .catch(() => {});
+  }, [id, user]);
+
+  const handleEnroll = async () => {
+    if (!user) return;
+    try {
+      await createEnrollment({ user_id: user.id, course_id: Number(id) });
+      setIsEnrolled(true);
+      showToast('Enrolled successfully!', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Enrollment failed', 'error');
+    }
+  };
 
   if (loading) return <LoadingSpinner />;
   if (error) return <div className="page-container"><ErrorMessage message={error} /></div>;
@@ -48,6 +75,17 @@ export default function CourseDetail() {
           <span className="course-card-id">{category}</span>
           <span className="detail-instructor">By {course.instructor_name || 'Instructor'}</span>
           <p className="detail-description">{course.description}</p>
+          {user?.role === 'learner' && (
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={handleEnroll}
+              disabled={isEnrolled}
+            >
+              <Icon name="enrollments" size={14} />
+              <span>{isEnrolled ? 'Enrolled' : 'Enroll Now'}</span>
+            </button>
+          )}
           <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadCoursePdf({ ...course, category })}>
             <Icon name="download" size={14} />
             <span>Download Course PDF</span>

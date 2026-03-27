@@ -5,6 +5,7 @@ import { getAllEnrollments } from '../services/enrollmentService';
 import { getAllProgress } from '../services/progressService';
 import { getAllPerformance } from '../services/performanceService';
 import { getAllCourses } from '../services/courseService';
+import { usePageTitle } from '../hooks/usePageTitle';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Icon from '../components/Icon';
 
@@ -162,6 +163,8 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [dashboard, setDashboard] = useState({ spotlight: null, actions: [], stats: [], signals: [] });
   const [loading, setLoading] = useState(true);
+
+  usePageTitle('Dashboard');
 
   useEffect(() => {
     if (!user) return;

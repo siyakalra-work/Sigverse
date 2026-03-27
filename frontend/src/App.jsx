@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import BackButton from './components/BackButton';
@@ -14,12 +15,27 @@ import Profile from './pages/Profile';
 import AdminPanel from './pages/AdminPanel';
 import InstructorPanel from './pages/InstructorPanel';
 import RoleAccessPage from './pages/RoleAccessPage';
+import NotFound from './pages/NotFound';
 
-export default function App() {
+function ScrollToTop() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+
+  return null;
+}
+
+function AppRoutes() {
+  const location = useLocation();
+  const hideBackOn = ['/login', '/auth/callback'];
+
   return (
-    <BrowserRouter>
+    <>
+      <ScrollToTop />
       <Navbar />
-      <BackButton />
+      {!hideBackOn.includes(location.pathname) && <BackButton />}
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
@@ -33,8 +49,16 @@ export default function App() {
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/admin" element={<ProtectedRoute allowedRoles={['admin']}><AdminPanel /></ProtectedRoute>} />
         <Route path="/instructor" element={<ProtectedRoute allowedRoles={['instructor']}><InstructorPanel /></ProtectedRoute>} />
-        <Route path="*" element={<Navigate to="/login" />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppRoutes />
     </BrowserRouter>
   );
 }

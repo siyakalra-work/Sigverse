@@ -42,8 +42,45 @@ exports.localSignup = async (req, res, next) => {
       res,
       data.requiresApproval ? 202 : 201,
       data,
-      data.message || 'Account created successfully'
+      data.message || 'OTP sent to your email'
     );
+  } catch (err) { next(err); }
+};
+
+exports.verifyLoginOtp = async (req, res, next) => {
+  try {
+    const data = await AuthService.verifyLoginOtp(req.body);
+    await LogService.logAuth({ user_id: data.user.id, provider: 'local', status: 'success' });
+    sendSuccess(res, 200, data, 'Logged in successfully');
+  } catch (err) {
+    await LogService.logAuth({ user_id: null, provider: 'local', status: 'failure' }).catch(() => {});
+    next(err);
+  }
+};
+
+exports.verifySignupOtp = async (req, res, next) => {
+  try {
+    const data = await AuthService.verifySignupOtp(req.body);
+    sendSuccess(
+      res,
+      data.requiresApproval ? 202 : 201,
+      data,
+      data.message || 'Account verified successfully'
+    );
+  } catch (err) { next(err); }
+};
+
+exports.forgotPassword = async (req, res, next) => {
+  try {
+    const data = await AuthService.requestPasswordReset(req.body);
+    sendSuccess(res, 200, data, 'Password reset OTP sent');
+  } catch (err) { next(err); }
+};
+
+exports.resetPassword = async (req, res, next) => {
+  try {
+    await AuthService.resetPassword(req.body);
+    sendSuccess(res, 200, null, 'Password updated successfully');
   } catch (err) { next(err); }
 };
 

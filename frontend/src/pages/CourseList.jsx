@@ -1,6 +1,8 @@
 import { useDeferredValue, useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useCourses } from '../hooks/useCourses';
+import useToast from '../hooks/useToast';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { createEnrollment, getAllEnrollments } from '../services/enrollmentService';
 import CourseCard from '../components/CourseCard';
 import Pagination from '../components/Pagination';
@@ -13,22 +15,25 @@ const COURSES_PER_PAGE = 9;
 export default function CourseList() {
   const { user } = useAuth();
   const { courses, loading, error } = useCourses();
+  const { showToast } = useToast();
   const [enrolledIds, setEnrolledIds] = useState([]);
-  const [msg, setMsg] = useState('');
   const [searchValue, setSearchValue] = useState('');
   const [viewFilter, setViewFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('All Categories');
   const [currentPage, setCurrentPage] = useState(1);
+  const [enrolledPage, setEnrolledPage] = useState(1);
   const deferredSearch = useDeferredValue(searchValue.trim().toLowerCase());
   const categories = getCourseCategories(courses);
+
+  usePageTitle('Courses');
 
   useEffect(() => {
     if (!user) return;
 
     getAllEnrollments()
-      .then(res => {
-        const mine = (res.data.data || []).filter(e => e.user_id === user?.id);
-        setEnrolledIds(mine.map(e => e.course_id));
+      .then((res) => {
+        const mine = (res.data.data || []).filter((item) => item.user_id === user?.id);
+        setEnrolledIds(mine.map((item) => item.course_id));
       })
       .catch(() => {});
   }, [user]);
@@ -36,48 +41,67 @@ export default function CourseList() {
   const handleEnroll = async (courseId) => {
     try {
       await createEnrollment({ user_id: user.id, course_id: courseId });
-      setEnrolledIds(prev => [...prev, courseId]);
-      setMsg('Enrolled successfully!');
-      setTimeout(() => setMsg(''), 3000);
+      setEnrolledIds((current) => [...current, courseId]);
+      showToast('Enrolled successfully!', 'success');
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Enrollment failed');
-      setTimeout(() => setMsg(''), 3000);
+      showToast(err.response?.data?.message || 'Enrollment failed', 'error');
     }
   };
 
-  const visibleCourses = courses.filter(course => {
+  const filteredCourses = courses.filter((course) => {
     const searchTarget = `${course.title} ${course.description || ''} ${course.instructor_name || ''}`.toLowerCase();
     const matchesSearch = !deferredSearch || searchTarget.includes(deferredSearch);
-    const isEnrolled = enrolledIds.includes(course.id);
-    const matchesEnrollmentFilter = user?.role !== 'learner' || (
-      viewFilter === 'all' ||
-      (viewFilter === 'enrolled' && isEnrolled) ||
-      (viewFilter === 'available' && !isEnrolled)
-    );
     const category = getCourseCategory(course);
     const matchesCategory = categoryFilter === 'All Categories' || category === categoryFilter;
 
-    return matchesSearch && matchesEnrollmentFilter && matchesCategory;
+    return matchesSearch && matchesCategory;
   });
 
+  const learnerEnrolledCourses = [...filteredCourses]
+    .filter((course) => enrolledIds.includes(course.id))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  const learnerGeneralCourses = [...filteredCourses]
+    .filter((course) => !enrolledIds.includes(course.id))
+    .sort((a, b) => a.title.localeCompare(b.title));
+  const visibleEnrolledCourses = user?.role === 'learner' && viewFilter !== 'available' ? learnerEnrolledCourses : [];
+  const visibleGeneralCourses = user?.role === 'learner' && viewFilter !== 'enrolled' ? learnerGeneralCourses : [];
+  const sortedVisibleCourses = user?.role === 'learner'
+    ? [...visibleEnrolledCourses, ...visibleGeneralCourses]
+    : [...filteredCourses].sort((a, b) => a.title.localeCompare(b.title));
+
   const summary = {
-    courses: visibleCourses.length,
-    modules: visibleCourses.reduce((sum, course) => sum + Number(course.module_count || 0), 0),
-    lessons: visibleCourses.reduce((sum, course) => sum + Number(course.lesson_count || 0), 0),
-    learners: visibleCourses.reduce((sum, course) => sum + Number(course.learner_count || 0), 0)
+    courses: sortedVisibleCourses.length,
+    modules: sortedVisibleCourses.reduce((sum, course) => sum + Number(course.module_count || 0), 0),
+    lessons: sortedVisibleCourses.reduce((sum, course) => sum + Number(course.lesson_count || 0), 0),
+    learners: sortedVisibleCourses.reduce((sum, course) => sum + Number(course.learner_count || 0), 0)
   };
   const hasCatalogError = Boolean(error);
   const hasSearchFilters = deferredSearch.length > 0 || viewFilter !== 'all' || categoryFilter !== 'All Categories';
-  const shouldShowFilteredEmptyState = !hasCatalogError && courses.length > 0 && visibleCourses.length === 0;
+  const shouldShowFilteredEmptyState = !hasCatalogError && courses.length > 0 && sortedVisibleCourses.length === 0;
   const shouldShowCatalogEmptyState = !hasCatalogError && courses.length === 0;
-  const totalPages = Math.max(1, Math.ceil(visibleCourses.length / COURSES_PER_PAGE));
-  const paginatedCourses = visibleCourses.slice(
+  const totalPages = Math.max(1, Math.ceil(sortedVisibleCourses.length / COURSES_PER_PAGE));
+  const paginatedCourses = sortedVisibleCourses.slice(
+    (currentPage - 1) * COURSES_PER_PAGE,
+    currentPage * COURSES_PER_PAGE
+  );
+  const enrolledTotalPages = user?.role === 'learner'
+    ? Math.max(1, Math.ceil(visibleEnrolledCourses.length / COURSES_PER_PAGE))
+    : 1;
+  const paginatedEnrolledCourses = visibleEnrolledCourses.slice(
+    (enrolledPage - 1) * COURSES_PER_PAGE,
+    enrolledPage * COURSES_PER_PAGE
+  );
+  const generalTotalPages = user?.role === 'learner'
+    ? Math.max(1, Math.ceil(visibleGeneralCourses.length / COURSES_PER_PAGE))
+    : totalPages;
+  const paginatedGeneralCourses = visibleGeneralCourses.slice(
     (currentPage - 1) * COURSES_PER_PAGE,
     currentPage * COURSES_PER_PAGE
   );
 
   useEffect(() => {
     setCurrentPage(1);
+    setEnrolledPage(1);
   }, [deferredSearch, viewFilter, categoryFilter]);
 
   useEffect(() => {
@@ -85,6 +109,18 @@ export default function CourseList() {
       setCurrentPage(totalPages);
     }
   }, [currentPage, totalPages]);
+
+  useEffect(() => {
+    if (user?.role === 'learner' && currentPage > generalTotalPages) {
+      setCurrentPage(generalTotalPages);
+    }
+  }, [currentPage, generalTotalPages, user?.role]);
+
+  useEffect(() => {
+    if (user?.role === 'learner' && enrolledPage > enrolledTotalPages) {
+      setEnrolledPage(enrolledTotalPages);
+    }
+  }, [enrolledPage, enrolledTotalPages, user?.role]);
 
   if (loading) return <LoadingSpinner />;
 
@@ -97,35 +133,48 @@ export default function CourseList() {
           <p className="catalog-subtitle">Explore structured programs, compare course depth at a glance, and enroll with a clearer sense of scope.</p>
         </div>
         <div className="catalog-summary-grid">
-          <div className="catalog-summary-card">
+          {/* <div className="catalog-summary-card">
             <span className="catalog-summary-label">Visible Courses</span>
             <strong className="catalog-summary-value">{summary.courses}</strong>
-          </div>
-          <div className="catalog-summary-card">
+          </div> */}
+          {/* <div className="catalog-summary-card">
             <span className="catalog-summary-label">Modules</span>
             <strong className="catalog-summary-value">{summary.modules}</strong>
           </div>
           <div className="catalog-summary-card">
             <span className="catalog-summary-label">Lessons</span>
             <strong className="catalog-summary-value">{summary.lessons}</strong>
-          </div>
-          <div className="catalog-summary-card">
+          </div> */}
+          {/* <div className="catalog-summary-card">
             <span className="catalog-summary-label">Learner Seats</span>
             <strong className="catalog-summary-value">{summary.learners}</strong>
-          </div>
+          </div> */}
         </div>
       </section>
 
       <section className="catalog-toolbar">
         <label className="catalog-search">
           <span className="catalog-search-label">Search</span>
-          <input
-            className="form-input"
-            type="search"
-            placeholder="Search by title, description, or instructor"
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-          />
+          <div style={{ position: 'relative' }}>
+            <input
+              className="form-input"
+              type="search"
+              placeholder="Search by title, description, or instructor"
+              value={searchValue}
+              onChange={(event) => setSearchValue(event.target.value)}
+              style={{ paddingRight: searchValue ? '2.5rem' : undefined }}
+            />
+            {searchValue && (
+              <button
+                type="button"
+                className="search-clear-btn"
+                onClick={() => setSearchValue('')}
+                aria-label="Clear search"
+              >
+                ×
+              </button>
+            )}
+          </div>
         </label>
         {user?.role === 'learner' && (
           <div className="catalog-filters">
@@ -133,7 +182,7 @@ export default function CourseList() {
               { key: 'all', label: 'All Courses' },
               { key: 'available', label: 'Open to Enroll' },
               { key: 'enrolled', label: 'Already Enrolled' }
-            ].map(filter => (
+            ].map((filter) => (
               <button
                 key={filter.key}
                 type="button"
@@ -159,28 +208,105 @@ export default function CourseList() {
         ))}
       </section>
 
-      {msg && <div className={`toast ${msg.includes('fail') ? 'toast-error' : 'toast-success'}`}>{msg}</div>}
       <ErrorMessage message={error} />
-      <div className="course-grid">
-        {paginatedCourses.map(course => (
-          <CourseCard
-            key={course.id}
-            course={course}
-            onEnroll={handleEnroll}
-            enrolled={enrolledIds.includes(course.id)}
-            showEnroll={user?.role === 'learner'}
-          />
-        ))}
-      </div>
-      {!hasCatalogError && visibleCourses.length > 0 && (
-        <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={visibleCourses.length}
-          itemLabel="courses"
-          onPageChange={setCurrentPage}
-        />
-      )}
+      {!hasCatalogError && !shouldShowCatalogEmptyState && !shouldShowFilteredEmptyState && (user?.role === 'learner' ? (
+        <>
+          {viewFilter !== 'available' && (visibleEnrolledCourses.length > 0 || viewFilter === 'enrolled') && (
+            <section className="catalog-course-section">
+              <div className="catalog-section-header">
+                <div>
+                  <span className="section-eyebrow">Your active learning plan</span>
+                  <h2 className="catalog-section-title">Enrolled Courses</h2>
+                </div>
+                <span className="catalog-section-count">{visibleEnrolledCourses.length}</span>
+              </div>
+              {visibleEnrolledCourses.length > 0 ? (
+                <>
+                  <div className="course-grid">
+                    {paginatedEnrolledCourses.map((course) => (
+                      <CourseCard
+                        key={course.id}
+                        course={course}
+                        onEnroll={handleEnroll}
+                        enrolled
+                        showEnroll
+                      />
+                    ))}
+                  </div>
+                  <Pagination
+                    currentPage={enrolledPage}
+                    totalPages={enrolledTotalPages}
+                    totalItems={visibleEnrolledCourses.length}
+                    itemLabel="courses"
+                    onPageChange={setEnrolledPage}
+                  />
+                </>
+              ) : (
+                <div className="catalog-section-note">No enrolled courses match the current filters.</div>
+              )}
+            </section>
+          )}
+
+          {viewFilter !== 'enrolled' && (
+            <section className="catalog-course-section">
+              <div className="catalog-section-header">
+                <div>
+                  <span className="section-eyebrow">Explore more learning paths</span>
+                  <h2 className="catalog-section-title">General Courses</h2>
+                </div>
+                <span className="catalog-section-count">{visibleGeneralCourses.length}</span>
+              </div>
+              {visibleGeneralCourses.length > 0 ? (
+                <>
+                  <div className="course-grid">
+                    {paginatedGeneralCourses.map((course) => (
+                      <CourseCard
+                        key={course.id}
+                        course={course}
+                        onEnroll={handleEnroll}
+                        enrolled={false}
+                        showEnroll
+                      />
+                    ))}
+                  </div>
+                  <Pagination
+                    currentPage={currentPage}
+                    totalPages={generalTotalPages}
+                    totalItems={visibleGeneralCourses.length}
+                    itemLabel="courses"
+                    onPageChange={setCurrentPage}
+                  />
+                </>
+              ) : (
+                <div className="catalog-section-note">No general courses match the current filters.</div>
+              )}
+            </section>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="course-grid">
+            {paginatedCourses.map((course) => (
+              <CourseCard
+                key={course.id}
+                course={course}
+                onEnroll={handleEnroll}
+                enrolled={enrolledIds.includes(course.id)}
+                showEnroll={user?.role === 'learner'}
+              />
+            ))}
+          </div>
+          {!hasCatalogError && sortedVisibleCourses.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              totalItems={sortedVisibleCourses.length}
+              itemLabel="courses"
+              onPageChange={setCurrentPage}
+            />
+          )}
+        </>
+      ))}
       {shouldShowFilteredEmptyState && (
         <div className="catalog-empty">
           <span className="catalog-empty-kicker">No matches found</span>

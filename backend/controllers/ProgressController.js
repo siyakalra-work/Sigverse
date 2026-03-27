@@ -1,4 +1,5 @@
 const ProgressService = require('../services/ProgressService');
+const CourseService = require('../services/CourseService');
 const UserService = require('../services/UserService');
 const { sendSuccess, sendError } = require('../utils/response');
 
@@ -21,12 +22,27 @@ exports.create = async (req, res, next) => {
 
 exports.getAll = async (req, res, next) => {
   try {
-    const data = req.user.role === 'admin'
-      ? await ProgressService.getAll()
-      : req.user.role === 'learner'
-        ? await ProgressService.getByUserId(req.user.sub)
-        : [];
-    sendSuccess(res, 200, data);
+    if (req.user.role === 'admin') {
+      const data = await ProgressService.getAll();
+      return sendSuccess(res, 200, data);
+    }
+
+    if (req.user.role === 'learner') {
+      const data = await ProgressService.getByUserId(req.user.sub);
+      return sendSuccess(res, 200, data);
+    }
+
+    if (req.user.role === 'instructor') {
+      const courses = await CourseService.getAll();
+      const courseIds = courses
+        .filter((course) => course.instructor_id === req.user.sub)
+        .map((course) => course.id);
+      const allProgress = await ProgressService.getAll();
+      const data = allProgress.filter((progress) => courseIds.includes(progress.course_id));
+      return sendSuccess(res, 200, data);
+    }
+
+    return sendSuccess(res, 200, []);
   } catch (err) { next(err); }
 };
 

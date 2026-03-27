@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import { getAllEnrollments } from '../services/enrollmentService';
+import useToast from '../hooks/useToast';
+import { deleteEnrollment, getAllEnrollments } from '../services/enrollmentService';
 import { getAllProgress } from '../services/progressService';
 import Pagination from '../components/Pagination';
 import ProgressBar from '../components/ProgressBar';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { useNavigate } from 'react-router-dom';
 import Icon from '../components/Icon';
 import CertificateModal from '../components/CertificateModal';
+import ConfirmModal from '../components/ConfirmModal';
 import { downloadCertificatePdf } from '../utils/pdf';
 
 const ENROLLMENTS_PER_PAGE = 6;
@@ -15,11 +17,13 @@ const ENROLLMENTS_PER_PAGE = 6;
 export default function EnrolledCourses() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [enrollments, setEnrollments] = useState([]);
   const [progressMap, setProgressMap] = useState({});
   const [loading, setLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [certificateData, setCertificateData] = useState(null);
+  const [leaveTarget, setLeaveTarget] = useState(null);
 
   useEffect(() => {
     if (!user) return;
@@ -30,14 +34,19 @@ export default function EnrolledCourses() {
           getAllEnrollments(),
           getAllProgress()
         ]);
-        const mine = (enrollRes.data.data || []).filter(e => e.user_id === user?.id);
-        const progData = (progRes.data.data || []).filter(p => p.user_id === user?.id);
-        const pMap = {};
-        progData.forEach(p => { pMap[p.course_id] = p.completion_percentage; });
+        const mine = (enrollRes.data.data || []).filter((item) => item.user_id === user?.id);
+        const progData = (progRes.data.data || []).filter((item) => item.user_id === user?.id);
+        const nextProgressMap = {};
+        progData.forEach((item) => {
+          nextProgressMap[item.course_id] = item.completion_percentage;
+        });
         setEnrollments(mine);
-        setProgressMap(pMap);
-      } catch {} finally { setLoading(false); }
+        setProgressMap(nextProgressMap);
+      } catch {} finally {
+        setLoading(false);
+      }
     };
+
     fetchData();
   }, [user]);
 
@@ -53,8 +62,6 @@ export default function EnrolledCourses() {
     }
   }, [currentPage, totalPages]);
 
-  if (loading) return <LoadingSpinner />;
-
   const handleCertificateOpen = (enrollment) => {
     setCertificateData({
       learnerName: user?.name || 'Learner',
@@ -68,6 +75,21 @@ export default function EnrolledCourses() {
     downloadCertificatePdf(certificateData);
   };
 
+  const handleLeaveCourse = async () => {
+    if (!leaveTarget) return;
+
+    try {
+      await deleteEnrollment(leaveTarget.id);
+      setEnrollments((current) => current.filter((item) => item.id !== leaveTarget.id));
+      showToast('You have been unenrolled from the course.', 'success');
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Unable to leave the course right now.', 'error');
+    }
+    setLeaveTarget(null);
+  };
+
+  if (loading) return <LoadingSpinner />;
+
   return (
     <div className="page-container">
       <div className="page-header">
@@ -77,39 +99,61 @@ export default function EnrolledCourses() {
       {enrollments.length === 0 ? (
         <div className="empty-state-container">
           <p className="empty-state">You haven't enrolled in any courses yet.</p>
-          <button className="btn btn-primary" onClick={() => navigate('/courses')}>Browse Courses</button>
+          <button type="button" className="btn btn-primary" onClick={() => navigate('/courses')}>
+            Browse Courses
+          </button>
         </div>
       ) : (
         <>
           <div className="enrolled-list">
-          {paginatedEnrollments.map(e => (
-            <div key={e.id} className="enrolled-card" onClick={() => navigate(`/learn/${e.course_id}`)}>
-              <div className="enrolled-card-info">
-                <h3>{e.course_title}</h3>
-                <span className={`status-badge status-${e.status}`}>{e.status}</span>
-              </div>
-              <ProgressBar percentage={progressMap[e.course_id] || 0} />
-              <div className="enrolled-card-actions">
-                <button className="btn btn-primary btn-sm">
-                  <span>Continue Learning</span>
-                  <Icon name="arrowRight" size={14} />
-                </button>
-                {(e.status === 'completed' || Number(progressMap[e.course_id] || 0) >= 100) && (
-                  <button
-                    type="button"
-                    className="btn btn-ghost btn-sm"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      handleCertificateOpen(e);
-                    }}
-                  >
-                    <Icon name="certificate" size={14} />
-                    <span>Certificate</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            {paginatedEnrollments.map((enrollment) => {
+              const isCompleted = enrollment.status === 'completed' || Number(progressMap[enrollment.course_id] || 0) >= 100;
+
+              return (
+                <div
+                  key={enrollment.id}
+                  className="enrolled-card"
+                  onClick={() => navigate(`/learn/${enrollment.course_id}`)}
+                >
+                  <div className="enrolled-card-info">
+                    <h3>{enrollment.course_title}</h3>
+                    <span className={`status-badge status-${enrollment.status}`}>{enrollment.status}</span>
+                  </div>
+                  <ProgressBar percentage={progressMap[enrollment.course_id] || 0} />
+                  <div className="enrolled-card-actions">
+                    <button type="button" className="btn btn-primary btn-sm">
+                      <span>Continue Learning</span>
+                      <Icon name="arrowRight" size={14} />
+                    </button>
+                    {!isCompleted && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setLeaveTarget(enrollment);
+                        }}
+                      >
+                        Leave Course
+                      </button>
+                    )}
+                    {isCompleted && (
+                      <button
+                        type="button"
+                        className="btn btn-ghost btn-sm"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleCertificateOpen(enrollment);
+                        }}
+                      >
+                        <Icon name="certificate" size={14} />
+                        <span>Certificate</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           <Pagination
             currentPage={currentPage}
@@ -125,6 +169,16 @@ export default function EnrolledCourses() {
         onClose={() => setCertificateData(null)}
         onDownload={handleCertificateDownload}
       />
+      {leaveTarget && (
+        <ConfirmModal
+          title={`Leave ${leaveTarget.course_title}?`}
+          message="Your progress will be removed from your active courses list."
+          confirmLabel="Leave Course"
+          cancelLabel="Keep Course"
+          onCancel={() => setLeaveTarget(null)}
+          onConfirm={handleLeaveCourse}
+        />
+      )}
     </div>
   );
 }

@@ -3,19 +3,24 @@ import api from '../services/api';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Pagination from '../components/Pagination';
 import Icon from '../components/Icon';
+import ConfirmModal from '../components/ConfirmModal';
+import useToast from '../hooks/useToast';
+import { usePageTitle } from '../hooks/usePageTitle';
 import { approveRequest, getApprovals, rejectRequest } from '../services/approvalService';
 
 const PAGE_SIZE = 8;
 
 export default function AdminPanel() {
+  const { showToast } = useToast();
   const [tab, setTab] = useState('users');
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
-  const [msgTone, setMsgTone] = useState('success');
   const [editModal, setEditModal] = useState(null);
+  const [confirmTarget, setConfirmTarget] = useState(null);
   const [searchValue, setSearchValue] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+
+  usePageTitle('Admin Panel');
 
   const tabs = [
     { key: 'users', label: 'Users', icon: 'user' },
@@ -28,10 +33,14 @@ export default function AdminPanel() {
     setLoading(true);
     try {
       const res = tab === 'approvals' ? await getApprovals() : await api.get(`/${tab}`);
-      setData(res.data.data || []);
+      const payload = res.data.data || [];
+      if (tab === 'approvals') {
+        setData(payload.filter((request) => ['course', 'instructor_signup'].includes(request.request_type)));
+      } else {
+        setData(payload);
+      }
     } catch (err) {
-      setMsgTone('error');
-      setMsg(err.response?.data?.message || 'Unable to load admin data');
+      showToast(err.response?.data?.message || 'Unable to load admin data', 'error');
     } finally { setLoading(false); }
   };
 
@@ -50,19 +59,17 @@ export default function AdminPanel() {
     if (currentPage > totalPages) setCurrentPage(totalPages);
   }, [currentPage, totalPages]);
 
-  const flashMessage = (text, tone = 'success') => {
-    setMsgTone(tone);
-    setMsg(text);
-    setTimeout(() => setMsg(''), 3000);
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure?')) return;
+  const handleDelete = async () => {
+    if (confirmTarget === null) return;
     try {
-      await api.delete(`/${tab}/${id}`);
-      flashMessage('Deleted successfully');
+      await api.delete(`/${tab}/${confirmTarget}`);
+      showToast('Deleted successfully', 'success');
+      setConfirmTarget(null);
       fetchData();
-    } catch (err) { flashMessage(err.response?.data?.message || 'Delete failed', 'error'); }
+    } catch (err) {
+      showToast(err.response?.data?.message || 'Delete failed', 'error');
+      setConfirmTarget(null);
+    }
   };
 
   const handleSaveEdit = async (event) => {
@@ -75,28 +82,28 @@ export default function AdminPanel() {
     try {
       if (editModal?.id) {
         await api.patch(`/${tab}/${editModal.id}`, formData);
-        flashMessage('Updated successfully');
+        showToast('Updated successfully', 'success');
       } else {
         await api.post(`/${tab}`, formData);
-        flashMessage('Created successfully');
+        showToast('Created successfully', 'success');
       }
       setEditModal(null);
       fetchData();
-    } catch (err) { flashMessage(err.response?.data?.message || 'Save failed', 'error'); }
+    } catch (err) { showToast(err.response?.data?.message || 'Save failed', 'error'); }
   };
 
   const handleApproval = async (requestId, action) => {
     try {
       if (action === 'approve') {
         await approveRequest(requestId);
-        flashMessage('Request approved');
+        showToast('Request approved', 'success');
       } else {
         await rejectRequest(requestId);
-        flashMessage('Request rejected');
+        showToast('Request rejected', 'success');
       }
       fetchData();
     } catch (err) {
-      flashMessage(err.response?.data?.message || 'Approval action failed', 'error');
+      showToast(err.response?.data?.message || 'Approval action failed', 'error');
     }
   };
 
@@ -182,7 +189,6 @@ export default function AdminPanel() {
         <h1 className="page-title">Admin <span className="text-gradient">Panel</span></h1>
         <p className="page-subtitle">Manage users, courses, enrollments, and approval workflows.</p>
       </div>
-      {msg && <div className={`toast ${msgTone === 'error' ? 'toast-error' : 'toast-success'}`}>{msg}</div>}
       <div className="admin-tabs">
         {tabs.map((tabItem) => (
           <button key={tabItem.key} className={`tab-btn ${tab === tabItem.key ? 'active' : ''}`} onClick={() => setTab(tabItem.key)}>
@@ -249,7 +255,7 @@ export default function AdminPanel() {
                       {getColumns().map((col) => <td key={col}>{String(item[col] ?? '')}</td>)}
                       <td className="actions-cell">
                         <button className="btn btn-ghost btn-xs" onClick={() => setEditModal(item)}>Edit</button>
-                        <button className="btn btn-danger btn-xs" onClick={() => handleDelete(item.id)}>Delete</button>
+                        <button className="btn btn-danger btn-xs" onClick={() => setConfirmTarget(item.id)}>Delete</button>
                       </td>
                     </tr>
                   ))}
@@ -290,6 +296,16 @@ export default function AdminPanel() {
             </form>
           </div>
         </div>
+      )}
+      {confirmTarget !== null && (
+        <ConfirmModal
+          title="Delete this item?"
+          message="This action cannot be undone."
+          onCancel={() => setConfirmTarget(null)}
+          onConfirm={handleDelete}
+          confirmLabel="Confirm"
+          cancelLabel="Cancel"
+        />
       )}
     </div>
   );

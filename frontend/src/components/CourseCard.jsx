@@ -1,16 +1,42 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getCourseCategory } from '../utils/courseMeta';
 
 export default function CourseCard({ course, onEnroll, enrolled, showEnroll = false }) {
   const navigate = useNavigate();
+  const [enrolling, setEnrolling] = useState(false);
   const moduleCount = Number(course.module_count || 0);
   const lessonCount = Number(course.lesson_count || 0);
   const learnerCount = Number(course.learner_count || 0);
   const spotlight = enrolled ? 'Enrolled' : learnerCount >= 8 ? 'Popular Cohort' : 'Open Cohort';
   const category = getCourseCategory(course);
 
+  const handleEnroll = async (event) => {
+    event.stopPropagation();
+    if (!onEnroll || enrolling) return;
+
+    setEnrolling(true);
+    try {
+      await onEnroll(course.id);
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
   return (
-    <div className="course-card" onClick={() => navigate(`/courses/${course.id}`)}>
+    <article
+      className="course-card"
+      onClick={() => navigate(`/courses/${course.id}`)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          navigate(`/courses/${course.id}`);
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`View course: ${course.title}`}
+    >
       <div className="course-card-gradient"></div>
       <div className="course-card-content">
         <div className="course-card-topline">
@@ -36,8 +62,8 @@ export default function CourseCard({ course, onEnroll, enrolled, showEnroll = fa
         </div>
         <div className="course-card-footer">
           {showEnroll && !enrolled && (
-            <button className="btn btn-primary btn-sm" onClick={(e) => { e.stopPropagation(); onEnroll && onEnroll(course.id); }}>
-              Enroll Now
+            <button className="btn btn-primary btn-sm" onClick={handleEnroll} disabled={enrolling}>
+              {enrolling ? 'Enrolling...' : 'Enroll Now'}
             </button>
           )}
           {enrolled && <span className="enrolled-badge">Currently in your plan</span>}
@@ -46,6 +72,6 @@ export default function CourseCard({ course, onEnroll, enrolled, showEnroll = fa
           </button>
         </div>
       </div>
-    </div>
+    </article>
   );
 }

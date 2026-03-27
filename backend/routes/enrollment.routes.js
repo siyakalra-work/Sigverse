@@ -11,6 +11,6 @@ router.get('/', authenticate, logger, EnrollmentController.getAll);
 router.get('/:id', authenticate, logger, EnrollmentController.getById);
 router.put('/:id', authenticate, authorize('admin'), validate(enrollmentUpdateSchema), logger, EnrollmentController.update);
 router.patch('/:id', authenticate, validate(enrollmentPatchSchema), logger, EnrollmentController.patch);
-router.delete('/:id', authenticate, authorize('admin'), logger, EnrollmentController.remove);
+router.delete('/:id', authenticate, logger, EnrollmentController.remove);
 
 module.exports = router;

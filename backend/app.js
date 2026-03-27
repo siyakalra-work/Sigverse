@@ -6,7 +6,6 @@ const passport = require('passport');
 
 require('./config/passport');
 require('./config/db.mysql');
-require('./config/db.mongo');
 
 const rateLimiter = require('./middlewares/rateLimiter');
 const errorHandler = require('./middlewares/errorHandler');
@@ -20,7 +19,7 @@ const enrollmentRoutes = require('./routes/enrollment.routes');
 const progressRoutes = require('./routes/progress.routes');
 const performanceRoutes = require('./routes/performance.routes');
 const approvalRoutes = require('./routes/approval.routes');
-const BootstrapService = require('./services/BootstrapService');
+const quizRoutes = require('./routes/quiz.routes');
 
 const app = express();
 
@@ -40,10 +39,7 @@ app.use('/enrollments', enrollmentRoutes);
 app.use('/progress', progressRoutes);
 app.use('/performance', performanceRoutes);
 app.use('/approvals', approvalRoutes);
-
-BootstrapService.ensureDemoAccounts()
-  .then(() => console.log('✅ Demo local accounts ready'))
-  .catch((err) => console.error('❌ Demo local account bootstrap failed:', err.message));
+app.use('/quizzes', quizRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

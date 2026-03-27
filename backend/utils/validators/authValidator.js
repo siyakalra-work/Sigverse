@@ -13,3 +13,18 @@ exports.localSignupSchema = Joi.object({
   password: Joi.string().min(6).required(),
   role: Joi.string().valid('learner', 'instructor').default('learner')
 });
+
+exports.otpVerifySchema = Joi.object({
+  email: emailRule.required(),
+  otp: Joi.string().pattern(/^[0-9]{6}$/).required()
+});
+
+exports.forgotPasswordSchema = Joi.object({
+  email: emailRule.required()
+});
+
+exports.resetPasswordSchema = Joi.object({
+  email: emailRule.required(),
+  otp: Joi.string().pattern(/^[0-9]{6}$/).required(),
+  newPassword: Joi.string().min(6).required()
+});

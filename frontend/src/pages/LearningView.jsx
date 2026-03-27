@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import useToast from '../hooks/useToast';
 import { getCourseById } from '../services/courseService';
 import { completeLessonSession, getAllProgress, getLessonState, startLessonSession } from '../services/progressService';
-import { buildModuleQuiz, getRecommendedVideos } from '../utils/courseMeta';
-import { downloadModulePdf } from '../utils/pdf';
+import { buildSampleQuiz, getRecommendedVideos } from '../utils/courseMeta';
+import { downloadCertificatePdf, downloadModulePdf } from '../utils/pdf';
+import { getCourseQuizzes, getQuizSubmissions, submitModuleQuiz } from '../services/quizService';
 import ProgressBar from '../components/ProgressBar';
 import LoadingSpinner from '../components/LoadingSpinner';
 import Icon from '../components/Icon';
@@ -13,16 +15,17 @@ export default function LearningView() {
   const { courseId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const [course, setCourse] = useState(null);
   const [progress, setProgress] = useState(null);
   const [completedLessons, setCompletedLessons] = useState(new Set());
   const [loading, setLoading] = useState(true);
   const [activeLesson, setActiveLesson] = useState(null);
-  const [message, setMessage] = useState('');
-  const [messageTone, setMessageTone] = useState('success');
   const [lessonAlert, setLessonAlert] = useState(null);
   const [quizAnswers, setQuizAnswers] = useState({});
   const [quizResult, setQuizResult] = useState(null);
+  const [moduleQuizzes, setModuleQuizzes] = useState({});
+  const [quizSubmissions, setQuizSubmissions] = useState({});
   const topRef = useRef(null);
   const quizRef = useRef(null);
   const navRef = useRef(null);
@@ -32,10 +35,12 @@ export default function LearningView() {
 
     const fetchData = async () => {
       try {
-        const [courseRes, progressRes, lessonStateRes] = await Promise.all([
+        const [courseRes, progressRes, lessonStateRes, quizRes, quizSubRes] = await Promise.all([
           getCourseById(courseId),
           getAllProgress(),
-          getLessonState(courseId)
+          getLessonState(courseId),
+          getCourseQuizzes(courseId).catch(() => ({ data: { data: [] } })),
+          getQuizSubmissions(courseId).catch(() => ({ data: { data: [] } }))
         ]);
 
         const courseData = courseRes.data.data;
@@ -47,17 +52,22 @@ export default function LearningView() {
         );
         setProgress(myProgress || null);
         setCompletedLessons(new Set(lessonStateRes.data.data?.completedLessonIds || []));
+        const quizMap = {};
+        (quizRes.data.data || []).forEach((quiz) => {
+          quizMap[quiz.module_id] = quiz;
+        });
+        setModuleQuizzes(quizMap);
+
+        const submissionMap = {};
+        (quizSubRes.data.data || []).forEach((submission) => {
+          submissionMap[submission.module_id] = submission;
+        });
+        setQuizSubmissions(submissionMap);
       } catch {} finally { setLoading(false); }
     };
 
     fetchData();
   }, [courseId, user]);
-
-  useEffect(() => {
-    if (!message) return;
-    const timeout = setTimeout(() => setMessage(''), 2600);
-    return () => clearTimeout(timeout);
-  }, [message]);
 
   useEffect(() => {
     if (!activeLesson || user?.role !== 'learner') return;
@@ -73,7 +83,11 @@ export default function LearningView() {
     ? activeLesson.content.split('\n\n').filter(Boolean)
     : [];
   const recommendedVideos = getRecommendedVideos(course, activeModule);
-  const moduleQuiz = buildModuleQuiz(activeModule);
+  const moduleQuizData = moduleQuizzes[activeModule?.id];
+  const fallbackQuiz = buildSampleQuiz(activeModule);
+  const resolvedQuizData = moduleQuizData?.questions?.length ? moduleQuizData : fallbackQuiz;
+  const moduleQuiz = resolvedQuizData?.questions || [];
+  const moduleQuizTitle = resolvedQuizData?.title || 'Module Quiz';
   const isModuleComplete = activeModule?.lessons?.every((lesson) => completedLessons.has(lesson.id));
   const flattenedLessons = course?.modules?.flatMap((moduleItem) =>
     (moduleItem.lessons || []).map((lesson) => ({
@@ -90,11 +104,25 @@ export default function LearningView() {
   const isLastLessonInModule = lastLessonId === activeLesson?.id;
   const quizAvailable = Boolean(isModuleComplete && isLastLessonInModule && moduleQuiz.length);
   const quizPending = quizAvailable && !quizResult;
+  const isLessonComplete = Boolean(activeLesson && completedLessons.has(activeLesson.id));
+  const requiresCompletionToAdvance = Boolean(nextLesson || quizAvailable);
+  const disableAdvance = requiresCompletionToAdvance && !isLessonComplete;
+  const courseCompleteByLessons = course?.modules?.every((moduleItem) =>
+    moduleItem.lessons?.every((lesson) => completedLessons.has(lesson.id))
+  );
+  const completionPercentage = progress?.completion_percentage || 0;
+  const canDownloadCertificate = completionPercentage >= 100 || Boolean(courseCompleteByLessons);
 
   useEffect(() => {
-    setQuizAnswers({});
-    setQuizResult(null);
-  }, [activeModule?.id]);
+    const submission = quizSubmissions[activeModule?.id];
+    if (submission) {
+      setQuizAnswers(submission.answers || {});
+      setQuizResult({ score: submission.score, total: submission.total });
+    } else {
+      setQuizAnswers({});
+      setQuizResult(null);
+    }
+  }, [activeModule?.id, quizSubmissions]);
 
   const scrollToTop = () => {
     topRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -104,13 +132,32 @@ export default function LearningView() {
     quizRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
+  useEffect(() => {
+    if (!activeLesson) return;
+    scrollToTop();
+  }, [activeLesson?.id]);
+
+  const handleLessonSelect = (lesson) => {
+    if (quizPending) {
+      const targetIndex = flattenedLessons.findIndex((item) => item.id === lesson.id);
+      if (targetIndex > activeIndex) {
+        setLessonAlert({
+          title: 'Finish the module quiz first',
+          message: 'Complete the module quiz to unlock the next lesson.'
+        });
+        return;
+      }
+    }
+
+    setActiveLesson(lesson);
+  };
+
   const handleMarkComplete = async () => {
     try {
       const res = await completeLessonSession(activeLesson.id, Number(courseId));
       setProgress(res.data.data.progress);
       setCompletedLessons(new Set(res.data.data.completedLessonIds || []));
-      setMessageTone('success');
-      setMessage('Lesson marked complete.');
+      showToast('Lesson marked complete.', 'success');
     } catch (err) {
       const errorMessage = err.response?.data?.message || 'Please spend more time in the lesson before marking it complete.';
       setLessonAlert({
@@ -120,16 +167,44 @@ export default function LearningView() {
     }
   };
 
-  const handleQuizSubmit = (event) => {
+  const handleQuizSubmit = async (event) => {
     event.preventDefault();
+    if (!activeModule) return;
     const score = moduleQuiz.reduce((sum, question) => sum + (quizAnswers[question.id] === question.answer ? 1 : 0), 0);
-    setQuizResult({
+    const payload = {
+      course_id: Number(courseId),
+      answers: quizAnswers,
       score,
       total: moduleQuiz.length
+    };
+
+    try {
+      await submitModuleQuiz(activeModule.id, payload);
+      setQuizResult({ score, total: moduleQuiz.length });
+      setQuizSubmissions((current) => ({
+        ...current,
+        [activeModule.id]: {
+          module_id: activeModule.id,
+          course_id: Number(courseId),
+          ...payload
+        }
+      }));
+      showToast('Quiz submitted. Review the correct answers below.', 'success');
+      setTimeout(() => {
+        navRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 150);
+    } catch {
+      showToast('Unable to submit quiz. Please try again.', 'error');
+    }
+  };
+
+  const handleCertificateDownload = () => {
+    if (!course || !user) return;
+    downloadCertificatePdf({
+      learnerName: user.name || 'Learner',
+      courseTitle: course.title,
+      completedDate: new Date().toLocaleDateString()
     });
-    setTimeout(() => {
-      navRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 150);
   };
 
   if (loading) return <LoadingSpinner />;
@@ -148,7 +223,7 @@ export default function LearningView() {
                 <div
                   key={lesson.id}
                   className={`tree-lesson ${activeLesson?.id === lesson.id ? 'active' : ''} ${completedLessons.has(lesson.id) ? 'completed' : ''}`}
-                  onClick={() => setActiveLesson(lesson)}
+                  onClick={() => handleLessonSelect(lesson)}
                 >
                   <span className="tree-lesson-icon">
                     <Icon name={completedLessons.has(lesson.id) ? 'check' : 'document'} size={14} />
@@ -172,12 +247,20 @@ export default function LearningView() {
               <span className="lesson-progress-chip">Course progress {progress?.completion_percentage || 0}%</span>
             </div>
 
-            {message && <div className={`toast ${messageTone === 'error' ? 'toast-error' : 'toast-success'}`}>{message}</div>}
-
             <div className="learning-toolbar">
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadModulePdf(course, activeModule)}>
                 <Icon name="download" size={14} />
                 <span>Download Module PDF</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={handleCertificateDownload}
+                disabled={!canDownloadCertificate}
+                title={canDownloadCertificate ? 'Download certificate' : 'Complete the course to unlock certificate'}
+              >
+                <Icon name="certificate" size={14} />
+                <span>Download Certificate</span>
               </button>
             </div>
 
@@ -243,7 +326,9 @@ export default function LearningView() {
               <button
                 type="button"
                 className="btn btn-primary btn-sm"
+                disabled={disableAdvance}
                 onClick={() => {
+                  if (disableAdvance) return;
                   if (quizPending) {
                     scrollToQuiz();
                     return;
@@ -256,15 +341,23 @@ export default function LearningView() {
                   navigate('/my-courses');
                 }}
               >
-                <span>{quizPending ? 'Go to Quiz' : nextLesson ? 'Next Lesson' : 'Back to My Courses'}</span>
+                <span>
+                  {!isLessonComplete && requiresCompletionToAdvance
+                    ? 'Complete Lesson to Continue'
+                    : quizPending
+                      ? 'Go to Quiz'
+                      : nextLesson
+                        ? 'Next Lesson'
+                        : 'Back to My Courses'}
+                </span>
                 <Icon name="arrowRight" size={14} />
               </button>
             </div>
 
-            {isModuleComplete && (
+            {quizAvailable && (
               <section className="module-quiz-card" ref={quizRef}>
                 <div className="module-quiz-head">
-                  <h3>Module Quiz</h3>
+                  <h3>{moduleQuizTitle}</h3>
                   <span>Check your understanding before moving on.</span>
                 </div>
                 <form onSubmit={handleQuizSubmit} className="module-quiz-form">
@@ -273,20 +366,34 @@ export default function LearningView() {
                       <p>{question.prompt}</p>
                       <div className="module-quiz-options">
                         {question.options.map((option) => (
-                          <label key={option} className="quiz-option">
+                          <label
+                            key={option}
+                            className={`quiz-option${quizResult ? option === question.answer ? ' is-correct' : quizAnswers[question.id] === option ? ' is-wrong' : '' : ''}`}
+                          >
                             <input
                               type="radio"
                               name={question.id}
                               checked={quizAnswers[question.id] === option}
+                              disabled={Boolean(quizResult)}
                               onChange={() => setQuizAnswers((current) => ({ ...current, [question.id]: option }))}
                             />
                             <span>{option}</span>
                           </label>
                         ))}
                       </div>
+                      {quizResult && (
+                        <div className="quiz-feedback">
+                          <span className={`quiz-answer ${quizAnswers[question.id] === question.answer ? 'correct' : 'wrong'}`}>
+                            Your answer: {quizAnswers[question.id] || 'No answer'}
+                          </span>
+                          <span className="quiz-correct">Correct answer: {question.answer}</span>
+                        </div>
+                      )}
                     </div>
                   ))}
-                  <button type="submit" className="btn btn-primary btn-sm">Submit Quiz</button>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={Boolean(quizResult)}>
+                    {quizResult ? 'Quiz Submitted' : 'Submit Quiz'}
+                  </button>
                 </form>
                 {quizResult && (
                   <p className="quiz-result">

@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
+import useToast from '../hooks/useToast';
+import { usePageTitle } from '../hooks/usePageTitle';
 import api from '../services/api';
 
 export default function Profile() {
   const { user, setUser } = useAuth();
+  const { showToast } = useToast();
   const isAdminSelfLocked = user?.role === 'admin';
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
-  const [msg, setMsg] = useState('');
   const [saving, setSaving] = useState(false);
+
+  usePageTitle('Profile');
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -16,10 +20,10 @@ export default function Profile() {
     try {
       const res = await api.patch(`/users/${user.id}`, { name, email });
       setUser(res.data.data);
-      setMsg('Profile updated successfully!');
+      showToast('Profile updated successfully!', 'success');
     } catch (err) {
-      setMsg(err.response?.data?.message || 'Update failed');
-    } finally { setSaving(false); setTimeout(() => setMsg(''), 3000); }
+      showToast(err.response?.data?.message || 'Update failed', 'error');
+    } finally { setSaving(false); }
   };
 
   return (
@@ -36,7 +40,6 @@ export default function Profile() {
           )}
           <span className="role-badge" data-role={user?.role}>{user?.role}</span>
         </div>
-        {msg && <div className="toast toast-success">{msg}</div>}
         <form onSubmit={handleSave} className="profile-form">
           {isAdminSelfLocked && <div className="toast toast-error">Admin self-edit is disabled in this build.</div>}
           <div className="form-group">

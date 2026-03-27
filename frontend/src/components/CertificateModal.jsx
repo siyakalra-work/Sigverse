@@ -33,7 +33,7 @@ export default function CertificateModal({ certificate, onClose, onDownload }) {
         </div>
         <div className="modal-actions">
           <button type="button" className="btn btn-primary" onClick={onDownload}>
-            Download Certificate
+            Download PDF
           </button>
           <button type="button" className="btn btn-ghost" onClick={onClose}>
             Close
