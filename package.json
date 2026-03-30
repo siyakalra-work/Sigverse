@@ -1,0 +1,13 @@
+{
+  "name": "sigverse",
+  "private": true,
+  "engines": {
+    "node": "20.x"
+  },
+  "scripts": {
+    "postinstall": "npm --prefix backend install",
+    "start": "npm --prefix backend start",
+    "backend:start": "npm --prefix backend start",
+    "frontend:build": "npm --prefix frontend install && npm --prefix frontend run build"
+  }
+}

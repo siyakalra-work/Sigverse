@@ -76,6 +76,8 @@ Backend settings:
 - Start command: `npm start`
 - Health check path: `/health`
 
+If you accidentally create the backend service from the repo root instead of `backend/`, this repo now includes a root `package.json` that forwards `npm install` and `npm start` to the backend so Render can still boot successfully.
+
 Frontend settings:
 
 - Root directory: `frontend`
