@@ -1,7 +1,7 @@
 const app = require('./app');
 const { connectMongo } = require('./config/db.mongo');
 const BootstrapService = require('./services/BootstrapService');
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3000;
 
 connectMongo()
   .then(() => BootstrapService.ensureDemoAccounts())

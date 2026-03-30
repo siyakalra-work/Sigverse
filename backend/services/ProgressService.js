@@ -120,7 +120,7 @@ class ProgressService {
   static calculateMinimumReadSeconds(content) {
     const words = String(content || '').trim().split(/\s+/).filter(Boolean).length;
     const derivedSeconds = Math.ceil(words / 3.2);
-    return Math.max(1, Math.min(90, derivedSeconds));
+    return Math.max(1, Math.min(1, derivedSeconds));
   }
 }
 

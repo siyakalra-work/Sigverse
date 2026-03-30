@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, useLocation, Navigate } from 'react-router-dom';
 import { useEffect } from 'react';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -16,6 +16,7 @@ import AdminPanel from './pages/AdminPanel';
 import InstructorPanel from './pages/InstructorPanel';
 import RoleAccessPage from './pages/RoleAccessPage';
 import NotFound from './pages/NotFound';
+import { useAuth } from './hooks/useAuth';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -25,6 +26,14 @@ function ScrollToTop() {
   }, [pathname]);
 
   return null;
+}
+
+function RootRedirect() {
+  const { user, loading } = useAuth();
+  
+  if (loading) return null;
+  if (user) return <Navigate to="/dashboard" />;
+  return <Navigate to="/login" />;
 }
 
 function AppRoutes() {
@@ -37,6 +46,7 @@ function AppRoutes() {
       <Navbar />
       {!hideBackOn.includes(location.pathname) && <BackButton />}
       <Routes>
+        <Route path="/" element={<RootRedirect />} />
         <Route path="/login" element={<Login />} />
         <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

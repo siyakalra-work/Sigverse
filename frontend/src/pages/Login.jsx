@@ -162,7 +162,7 @@ export default function Login() {
     }
 
     if (!err.response) {
-      return 'Cannot reach the backend. Make sure the backend is running on http://localhost:5000 and try again.';
+      return 'Cannot reach the backend. Make sure the backend is running on http://localhost:3000 and try again.';
     }
 
     if (Array.isArray(err.response?.data?.errors) && err.response?.data?.errors.length) {

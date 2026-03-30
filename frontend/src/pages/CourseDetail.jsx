@@ -75,21 +75,23 @@ export default function CourseDetail() {
           <span className="course-card-id">{category}</span>
           <span className="detail-instructor">By {course.instructor_name || 'Instructor'}</span>
           <p className="detail-description">{course.description}</p>
-          {user?.role === 'learner' && (
-            <button
-              type="button"
-              className="btn btn-primary btn-sm"
-              onClick={handleEnroll}
-              disabled={isEnrolled}
-            >
-              <Icon name="enrollments" size={14} />
-              <span>{isEnrolled ? 'Enrolled' : 'Enroll Now'}</span>
+          <div className="detail-actions">
+            {user?.role === 'learner' && (
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={handleEnroll}
+                disabled={isEnrolled}
+              >
+                <Icon name="enrollments" size={14} />
+                <span>{isEnrolled ? 'Enrolled' : 'Enroll Now'}</span>
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadCoursePdf({ ...course, category })}>
+              <Icon name="download" size={14} />
+              <span>Download Course PDF</span>
             </button>
-          )}
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => downloadCoursePdf({ ...course, category })}>
-            <Icon name="download" size={14} />
-            <span>Download Course PDF</span>
-          </button>
+          </div>
         </div>
         <div className="course-detail-metrics">
           <div className="course-detail-metric">
