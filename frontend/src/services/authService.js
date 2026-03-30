@@ -1,7 +1,8 @@
 import api from './api';
+import { getApiUrl } from '../utils/config';
 
 export const loginWithGithub = () => {
-  window.location.href = `${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/auth/github`;
+  window.location.href = `${getApiUrl()}/auth/github`;
 };
 
 export const loginWithEmail = (data) => api.post('/auth/login', data);

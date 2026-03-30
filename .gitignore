@@ -13,6 +13,8 @@ backend/.env.*
 frontend/.env
 frontend/.env.*
 *.local
+!backend/.env.example
+!frontend/.env.example
 
 # Logs
 logs/

@@ -7,6 +7,7 @@ const passport = require('passport');
 require('./config/passport');
 require('./config/db.mysql');
 
+const { getFrontendUrls } = require('./config/env');
 const rateLimiter = require('./middlewares/rateLimiter');
 const errorHandler = require('./middlewares/errorHandler');
 
@@ -22,8 +23,18 @@ const approvalRoutes = require('./routes/approval.routes');
 const quizRoutes = require('./routes/quiz.routes');
 
 const app = express();
+const allowedOrigins = getFrontendUrls();
 
-app.use(cors({ origin: process.env.FRONTEND_URL, credentials: true }));
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+  },
+  credentials: true
+}));
 app.use(express.json());
 app.use(morgan('dev'));
 app.use(passport.initialize());

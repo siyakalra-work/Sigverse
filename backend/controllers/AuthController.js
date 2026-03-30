@@ -5,19 +5,22 @@ const LogService = require('../services/LogService');
 const UserService = require('../services/UserService');
 const AuthService = require('../services/AuthService');
 const BootstrapService = require('../services/BootstrapService');
+const { getPrimaryFrontendUrl } = require('../config/env');
 
 exports.githubAuth = passport.authenticate('github', { scope: ['user:email'] });
 
 exports.githubCallback = (req, res, next) => {
   passport.authenticate('github', { session: false }, async (err, user) => {
     try {
+      const frontendUrl = getPrimaryFrontendUrl();
+
       if (err || !user) {
         await LogService.logAuth({ user_id: null, provider: 'github', status: 'failure' });
-        return res.redirect(`${process.env.FRONTEND_URL}/login?error=auth_failed`);
+        return res.redirect(`${frontendUrl}/login?error=auth_failed`);
       }
       await LogService.logAuth({ user_id: user.id, provider: 'github', status: 'success' });
       const token = generateToken(user);
-      res.redirect(`${process.env.FRONTEND_URL}/auth/callback?token=${token}`);
+      res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
     } catch (error) {
       next(error);
     }

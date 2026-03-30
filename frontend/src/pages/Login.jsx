@@ -162,7 +162,7 @@ export default function Login() {
     }
 
     if (!err.response) {
-      return 'Cannot reach the backend. Make sure the backend is running on http://localhost:3000 and try again.';
+      return 'Cannot reach the backend. Check that the deployed API URL is configured correctly and the backend service is running.';
     }
 
     if (Array.isArray(err.response?.data?.errors) && err.response?.data?.errors.length) {

@@ -147,6 +147,7 @@ const CourseService = require('./CourseService');
 const ModuleService = require('./ModuleService');
 const LessonService = require('./LessonService');
 const EmailService = require('./EmailService');
+const { getPrimaryFrontendUrl } = require('../config/env');
 
 class ApprovalService {
   static async listForUser(user) {
@@ -204,7 +205,7 @@ class ApprovalService {
         result = user;
 
         // Send approval confirmation email to the new instructor
-        const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login`;
+        const loginUrl = `${getPrimaryFrontendUrl()}/login`;
         await EmailService.sendEmail({
           to: credential.email,
           subject: '🎉 Welcome to Sigverse — Instructor Account Approved!',
